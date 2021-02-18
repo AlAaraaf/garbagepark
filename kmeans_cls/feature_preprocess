@@ -1,0 +1,31 @@
+import pyspark as ps
+from pyspark.sql import SparkSession
+from pyspark import SparkContext
+from pyspark.sql import functions as f
+import pandas as pd
+
+sc = SparkContext("local", "garbage")
+spark = SparkSession(sc)
+
+data = spark.read.csv('clsdata.csv', header = True, inferSchema = True)
+clsdata = data.select('age', 'freq', 'maxd', 'mind', 'wpercent', 'mnum')
+#clsdata = cust_clust.select('age', 'freq', 'maxd', 'mind', 'wpercent', 'mnum')
+
+# 数据归一化处理
+from pyspark.ml.feature import StandardScaler
+from pyspark.sql.functions import col
+from pyspark.sql.types import DoubleType
+from pyspark.ml.feature import VectorAssembler
+from pyspark.sql.functions import monotonically_increasing_id 
+clsdata = clsdata.withColumn('age', col('age').cast(DoubleType()))\
+.withColumn('maxd', col('maxd').cast(DoubleType()))\
+.withColumn('mind', col('mind').cast(DoubleType()))\
+.withColumn('mnum', col('mnum').cast(DoubleType()))
+
+vecassem = VectorAssembler(inputCols = clsdata.columns, outputCol = 'feature')
+clsdata_vecform = vecassem.transform(clsdata)
+clsdata_vecform = clsdata_vecform.withColumn('id', monotonically_increasing_id())
+clsdata_stdvec = clsdata_vecform.select('id', 'feature')
+std = StandardScaler(withMean = True, withStd = True, inputCol = 'feature', outputCol = 'stdfts')
+clsdata_stdvec = std.fit(clsdata_stdvec).transform(clsdata_stdvec).select('id','stdfts')
+clsdata_model = clsdata_stdvec.withColumn('feature',clsdata_stdvec['stdfts'])
